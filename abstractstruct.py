@@ -10,7 +10,6 @@ from __future__ import unicode_literals
 import os
 import sys
 
-
 if __name__ == "__main__" and __package__ is None:
     from support import *
 else:
@@ -29,9 +28,7 @@ class AbstractStruct(object):
     Abstract class for implementing struct classes.
     '''
 
-
     _frozen = False
-
 
     _packed_size = None
 
@@ -49,14 +46,12 @@ class AbstractStruct(object):
                 raise AttributeError('Struct class is "frozen". Cannot add attribute {}.'.format(key))
             if key.startswith('_'):
                 raise AttributeError('Attribute {} is private and cannot be changed in a "frozen" class.'.format(key))
-
         super(AbstractStruct,self).__setattr__(key, value)
 
     def __delattr__(self, key):
         ''' Overrides base class. '''
         if self._frozen:
             raise AttributeError( "Parameter {} cannot be deleted.".format(key) )
-
         super(AbstractStruct,self).__delattr__(key)
 
     def __eq__(self, other):

@@ -11,24 +11,22 @@ import os
 import sys
 import re
 
+_path = os.path.realpath(os.path.abspath(os.path.join(__file__,'../..')))
+sys.path.append(_path)
+try:
+    import utils
+except:
+    import pyutils as utils
+
 try:
     from .userexceptions import *
 except:
-
     from userexceptions import *
 
-try:
-    import utils
-except:
-
-    path = os.path.realpath(os.path.abspath(os.path.join(__file__,'../..')))
-    sys.path.append(path)
-    import utils
 
 def clean(s):
     ''' Remove white spaces from <s>. '''
     return s.strip(' \t\n\r\f\v')
-
 
 
 COMMENT_START_REGEX = re.compile(r'((//)|(/\*)|(\"))')
@@ -44,9 +42,6 @@ def process_line_for_comments(line, inside_comment=False, inside_string=False):
             #  Inside a comment!
             idx = line.find('*/')
             if idx>=0:
-
-
-
                 comment += line[:idx]
                 line = line[idx+2:]
                 inside_comment = False
@@ -83,17 +78,14 @@ def process_line_for_comments(line, inside_comment=False, inside_string=False):
                         line = line[m.end():]
                         inside_comment = True
                     else:
-
                         comment += line[m.end():]
                         #line = ''
                         break
             else:
                 code += line
-
                 break
 
     return code, comment, inside_comment, inside_string
-
 
 
 

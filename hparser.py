@@ -12,15 +12,14 @@ import sys
 import traceback
 import re
 
-
 if __name__ == "__main__" and __package__ is None:
-    from support import *
+    from h2pyex import *
 else:
     from .support import *
-
-from h2pyex import Writer, WriterPlus, WriterCTypes
-from h2pyex.abstractstruct import ENDIANNESS_NETWORK
-
+    from .writer import Writer
+    from .writerplus import WriterPlus
+    from .writer_ctypes import WriterCTypes
+    from .abstractstruct import ENDIANNESS_NETWORK
 
 
 try:
@@ -59,7 +58,6 @@ def import_cheader(filename, asname=None, add_to_sys_modules=True):
         assert os.path.isfile(filename)
         asname = os.path.splitext(os.path.split(filename)[1])[0]
     module = imp.new_module(asname)
-
     module.__dict__['__doc__'] = 'Auto-generated python module from "'+os.path.split(filename)[1]+'"'
     hr = HeaderParser(
         source=filename, output=out, errstream=None)
@@ -78,7 +76,7 @@ class HeaderParser(object):
     Class for parsing a c header file.
     '''
 
-    def __init__(self, source=None, output=None, writer = None, env={}, ignores=None, default_endianness=ENDIANNESS_NETWORK, writer_cls=WriterPlus, **kwargs):
+    def __init__(self, source=None, output=None, writer = None, env={}, ignores=None, default_endianness=ENDIANNESS_NETWORK, writer_cls=WriterCTypes, **kwargs):
         '''
         Constructor
         '''
@@ -98,48 +96,28 @@ class HeaderParser(object):
             self.errstream = kwargs['errstream']
             del kwargs['errstream']
         else:
-
-
             self.errstream = sys.stderr
-
 
         if kwargs: raise Exception('Unused args: ' + str(kwargs))
 
         self.env = env
         self.struct_format = {}
 
-
-
         #for k,v in TYPE_2_DEFAULTS.iteritems():
         #    exec ('{}={}\n'.format(k,v)) in self.env
-
 
         self.filedict = {}
         self.importable = {}
 
         #######################################################################
-
         #######################################################################
         self._lineno = 0
 
-
-
-
         self.current_lineno = 0
-
-
-
 
         self.current_codeline = ''
 
-
-
-
-
-
         self.last_codeline = None
-
-
 
         self.current_comment = ''
         self.current_inline_comment = ''
@@ -151,7 +129,6 @@ class HeaderParser(object):
 
 
     def _put_error(self, msg):
-
         if not self.errstream is None:
             self.errstream.write('ERROR: ' + msg + '\n')
             self.errstream.flush()
@@ -162,11 +139,9 @@ class HeaderParser(object):
         empty (and thus parsed).
         '''
 
-
         cleaned = clean(self.current_codeline)
         if cleaned:
             self._put_error('Skipped "{}", line {}.'.format(cleaned, self.current_lineno))
-
 
         #if self.current_comment:
         #    sys.stderr.write('WARNING: Skipping comment "%s" on line %d.\n' % (self.current_comment, self.current_lineno))
@@ -188,10 +163,6 @@ class HeaderParser(object):
             self.current_codeline = ''
             self.current_comment = ''
 
-
-
-
-
         while not self.current_codeline or ( ( self.was_inside_comment or self.was_inside_code) and not self.last_codeline):
             lineStr = self.source.readline()
             if not lineStr:
@@ -206,14 +177,11 @@ class HeaderParser(object):
                     self._lineno += 1
                     lineStr += next_line
             elif not clean(lineStr):
-
-
                 return ''
 
             (code, comment, self.was_inside_comment, self.was_inside_code) = \
                 process_line_for_comments(lineStr, self.was_inside_comment, self.was_inside_code)
             #print((code, comment, self.was_inside_comment, self.was_inside_code))
-
             cleanCode =  clean(code)
             if self.current_codeline and cleanCode:
                 self.last_lineno = self._lineno
@@ -227,12 +195,9 @@ class HeaderParser(object):
                     self.current_inline_comment += comment
                 else:
                     self.current_comment += comment
-
-
         if self.current_comment:
             fixed = self.current_comment.rstrip('\v\f\t\r\n')
             self.current_comment = fixed +'\n'
-
         self.current_inline_comment = clean(self.current_inline_comment)
         return self.current_codeline
 
@@ -250,16 +215,13 @@ class HeaderParser(object):
         self.current_codeline = self.current_codeline[len(ch):]
         return self.current_codeline
 
-
     REGEX_CHAR = re.compile(r"'(\\.[^\\]*|[^\\])'")
     REGEX_HEX = re.compile(r"0x([0-9a-fA-F]+)L?")
     def pytify(self, body):
         '''
         This is a code snippet extracted from h2py.
         '''
-
         body = self.REGEX_CHAR.sub("ord('\\1')", body)
-
         start = 0
         UMAX = 2 * (sys.maxint + 1)
         while 1:
@@ -272,7 +234,6 @@ class HeaderParser(object):
                 body = body[:s] + "(" + str(val) + ")" + body[e:]
             start = s + 1
         return body
-
 
     REGEXT_DETECT_INCLUDE = re.compile('^[\t ]*#[\t ]*include[\t ]+<([a-zA-Z0-9_/\.]+)')
     def parse_include(self):
@@ -307,7 +268,6 @@ class HeaderParser(object):
                     self._put_error('Warning - could not find file %s\n' %
                                      filename)
 
-
     REGEX_DETECT_DEFINE = re.compile(r'^[\t ]*#[\t ]*define[\t ]+([a-zA-Z0-9_]+)([\t ]+|$)')
     def parse_define(self):
         '''
@@ -317,7 +277,6 @@ class HeaderParser(object):
         if match:
             name = match.group(1)
             body = self.current_codeline[match.end():]
-
             body = self.pytify(body)
             #Need to support empty defines used as compile directives
             if not clean(body):
@@ -326,13 +285,11 @@ class HeaderParser(object):
             try:
                 exec stmt in self.env
             except:
-
                 self._put_error("Unable to evaluate: '%s'\n  From line %d:\n\t%s\n"  % (stmt, self.current_lineno, self.current_codeline))
             else:
                 self.writer.putln(stmt)
                 self.current_codeline = ''
                 return True
-
 
     REGEX_DETECT_MACRO = re.compile(
          r'^[\t ]*#[\t ]*define[\t ]+'
@@ -345,7 +302,6 @@ class HeaderParser(object):
         if match:
             macro, arg = match.group(1, 2)
             body = self.current_codeline[match.end():]
-
             body = self.pytify(body)
             stmt = "def %s(%s): return %s\n" % (macro, arg, body)
             try:
@@ -375,15 +331,8 @@ class HeaderParser(object):
 
 
 
-
-
-
-
-
     REGEX_DETECT_STRUCT = re.compile(r'[\t ]*(typedef)?[\t ]*struct[\t ]*([a-zA-Z0-9_\(\)]+)*')
-
     REGEX_DETECT_FIELD = re.compile(r'^[\t ]*([a-zA-Z0-9_]+)[\t ]+([a-zA-Z0-9_]+)[\t ]*([a-zA-Z0-9_\[\]\+\*\-\(\) \t]*?)[\t ]*;')
-
     REGEX_DETECT_STRUCTEND = re.compile(r'[\t ]*\}[\t ]*([a-zA-Z0-9_]*)[\t ]*;')
 
     def parse_struct(self):
@@ -395,7 +344,6 @@ class HeaderParser(object):
         #TODO:F  structname - the name of the typedef or struct
         #TODO:F  fields - a list of parameters for each field
 
-
         m = self.REGEX_DETECT_STRUCT.search(self.current_codeline)
         if m:
             start_lineno = self.current_lineno
@@ -404,29 +352,23 @@ class HeaderParser(object):
             tagname = m.group(2)
             self.current_codeline = clean(self.current_codeline[m.end():])
 
-
             self._parse_string('{')
 
             ###################################################################
-
-
             ###################################################################
             members = []
             comment = ''
-
             m = self.REGEX_DETECT_STRUCTEND.match(self.current_codeline)
             while not m:
                 self.current_codeline = clean(self.current_codeline)
                 if self.current_codeline:
                     inner_match = self.REGEX_DETECT_FIELD.match(self.current_codeline)
                     if inner_match:
-
                         typename = inner_match.group(1)
                         (start1, end1) = inner_match.regs[1]
                         membername = inner_match.group(2)
                         (start2, end2) = inner_match.regs[2]
                         markup = inner_match.group(3)
-
 
                         #try:
                         #    # Is this a known type
@@ -438,7 +380,6 @@ class HeaderParser(object):
                         #        unused
                         #    except:
                         #        raise UnsupportedDataTypeException(typename, self.current_lineno)
-
 
                         arr_match = re.match('\[(.*)\]', clean(markup))
                         if arr_match:
@@ -467,10 +408,7 @@ class HeaderParser(object):
                 if self.next_line() is None:
                     raise UnexpectedException('End of file reached in incomplete structure definition.', start_lineno)
 
-
                 m = self.REGEX_DETECT_STRUCTEND.match(self.current_codeline)
-
-
 
             if isTypedef:
                 structname = m.group(1)
@@ -482,8 +420,6 @@ class HeaderParser(object):
                     raise ParseException("No tag name found for struct.", start_lineno)
             self.current_codeline = clean(self.current_codeline[m.end():])
             final_comment = self.current_comment + self.current_inline_comment
-
-
 
             expr = 'class %s:\n\tpass\n' % structname
             exec expr in self.env
@@ -512,7 +448,6 @@ class HeaderParser(object):
         assert self.source, "No source!"
         while self.next_line(goble_lines=False) is not None:
             if self.current_codeline:
-
                 res = self.parse_include()
                 if res:
                     continue
@@ -529,12 +464,10 @@ class HeaderParser(object):
                 res = self.parse_typedef()
                 if res:
                     continue
-
                 self._put_error('Skipped line %d:\n\t%s\n' % (self.current_lineno, self.current_codeline.rstrip('\r\n\t ')))
                 self.current_codeline = ''
 
             elif self.current_comment:
-
                 self.writer._put_comment(self.current_comment + '\n')
                 self.writer.output.flush()
                 self.current_comment = ''

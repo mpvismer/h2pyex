@@ -10,12 +10,9 @@ from __future__ import unicode_literals
 import sys
 import copy
 
-
 from .support import *
 
 from .abstractstruct import *
-
-
 
 TYPE_2_STRUCT_FORMAT = {
     'bool': '?',
@@ -45,7 +42,6 @@ TYPE_2_STRUCT_FORMAT = {
     'float32_t' : 'f',
     'float64_t' : 'd'
 }
-
 
 
 TYPE_2_DEFAULTS = {
@@ -163,6 +159,9 @@ class Writer(object):
             raise UnsupportedDataTypeException("For {} on line {}.".format(typename, lineno))
         else:
             self.type_map[defname] = actualtype
+        self._check_dependencies()
+        self._put_comment(comment, 1)
+        self.putln("{} = '{}'".format(defname, actualtype))
 
     def write_struct_class(self, structname, comment, members, final_comment=''):
         '''
@@ -176,7 +175,6 @@ class Writer(object):
         self.putln1(self._format_comment_block(comment, 1))
         self.putln1("'''")
         self.putln1()
-
         self.putln1('_fields_ = [')
         for (attribname, typename, arraysize, comment) in members:
             if arraysize>=0:
@@ -187,7 +185,6 @@ class Writer(object):
         self.putln1()
 
         #######################################################################
-
         #######################################################################
         self.putln1("def __init__(self,")
         self.putln3("endianness='{}',".format(self.default_endianness))
@@ -195,38 +192,26 @@ class Writer(object):
         self.putln2("super({}, self).__init__()".format(structname)),
 
 
-
-
-
-
-
         #  if comment:
 #           #self.output.write(3*INDENT + '# ' + comment.rstrip('\r\n\t ') + '\n' )
                 #self.printComment(comment.rstrip('\r\n\t '), 3*self.indentation)
-
 
 
         fmt = ''
         struct_classes = []
         for (attribname, typename, arraysize, comment) in members:
             if arraysize>=0:
-
                 try:
                     struct_format = self.type_map[typename]*arraysize
                     defaultvalue = self.defaults_map[typename]
                     fmt+= struct_format
-
-
-
                     self.putln2("self._struct_{0} = struct.Struct(str(endianness + '{1}'*{2}))".format(attribname, struct_format, arraysize))
                     self.putln2("self.{0} = kwargs.get('{0}', {1}*[{2}])".format(attribname, arraysize, defaultvalue))
                 except KeyError:
-
                     struct_classes.append((typename, arraysize))
                     self.putln2("self.{0} = kwargs.get('{0}', [{1}() for _ in range({2})])".format(attribname, typename, arraysize))
                 self.putln2('''assert {0}==len(self.{1}), "Attribute '{1}' has invalid length."'''.format(arraysize, attribname, attribname))
             else:
-
                 try:
                     struct_format = self.type_map[typename]
                     defaultvalue = self.defaults_map[typename]
@@ -242,28 +227,22 @@ class Writer(object):
         self.putln2("# Note that if there are nested structs, self._packing_struct is incomplete")
         self.putln2("# and just used for calculating the packed size.")
         self.putln2("self._packingFormat = endianness + '{}'".format(fmt))
-
         self.putln2("self._packing_struct = struct.Struct(str(self._packingFormat))")
 
         self.putln2("self._packed_size = self._packing_struct.size")
         if struct_classes:
             for cls, cnt in struct_classes:
                 if cnt<0:
-
                     cnt = 1
                 self.putln2("self._packed_size += {}().packed_size()*{}".format(cls, cnt))
-
 
         self.putln2("self.freeze()")
         self.putln2("")
 
         ###################################################################
-
         ###################################################################
         self.putln1("def serialise(self):")
         if len(struct_classes)==0:
-
-
             self.putln2("return self._packing_struct.pack( *(\\")
             for (attribname, typename, arraysize, comment) in members:
                 if arraysize>=0:
@@ -275,10 +254,7 @@ class Writer(object):
             self.putln2("data = []\n")
             for (attribname, typename, arraysize, comment) in members:
                 try:
-
                     struct_format = self.type_map[typename]
-
-
                     if arraysize==0:
                         print("Attribute %s has array size of 0 and was omitted." % attribname)
                     if arraysize>=0:
@@ -295,12 +271,9 @@ class Writer(object):
         self.putln2("")
 
         ###################################################################
-
         ###################################################################
         self.putln1("def deserialise_from(self, buf, offset):")
         if len(struct_classes)==0:
-
-
             self.putln2("results = self._packing_struct.unpack_from(buf, offset)")
             idx = 0;
             for (attribname, typename, arraysize, comment) in members:
@@ -329,7 +302,6 @@ class Writer(object):
                         self.putln2("offset += self.{0}.packed_size()".format(attribname))
 
         ###################################################################
-
         ###################################################################
         if final_comment:
             self.putln(self._format_comment_block(final_comment, 1))

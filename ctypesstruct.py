@@ -42,49 +42,20 @@ class CTypesStruct(AbstractStruct):
 
     def deserialise(self, buf):
         ''' Calls the deserialise_from buffer '''
-
-
-
-
-
-
-
-
         #     ctypes.addressof(self),
         #     utils.buffer_address(buf),
         #     size)
-
         utils.buffercpy(self, buf)
 
     def deserialise_from(self, buf, offset):
         ''' Deserialise a byte stream from a buffer.'''
-
-
-
-
-
-
-
-
-
-
-
-
-
         #    ctypes.addressof(self),
         #    info[0]+offset,
         #    size)
-
-
-
-
-
-
         #    ctypes.addressof(self),
         #    utils.buffer_address(buf) + offset,
         #    #buf[offset:size+offset],
         #    size)
-
         utils.buffercpy(self, buf, src_offset=offset)
 
 

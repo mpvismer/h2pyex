@@ -9,10 +9,7 @@ from __future__ import unicode_literals
 
 from ctypes import *
 
-
 from .writer import *
-
-
 
 
 TYPE_2_CTYPE_MAP = {
@@ -94,15 +91,6 @@ class WriterCTypes(Writer):
             self.putln("from h2pyex.ctypesstruct import CTypesStruct")
             self.has_dependencies = True
 
-    def write_typedef(self, defname, typename, comment, lineno):
-        '''
-        Writes a typedef to the output file.
-        '''
-        super(WriterCTypes, self).write_typedef(defname, typename, comment, lineno)
-        self._check_dependencies()
-        self._put_comment(comment, 1)
-        self.putln1("{} = {}".format(defname, typename))
-
     def write_struct_class(self, structname, structcomment, members, final_comment=''):
         self._check_dependencies()
         self.putln("class {}(CTypesStruct, {}):".format(structname, ENDIANNESS_MAP[self.default_endianness]))
@@ -120,8 +108,6 @@ class WriterCTypes(Writer):
         self.putln1()
         self.putln1("def __init__(self, **kwargs):")
         self.putln2("super({}, self).__init__(**kwargs)".format(structname)),
-
-
         self.putln2("self.freeze()")
         self.putln2("")
 
