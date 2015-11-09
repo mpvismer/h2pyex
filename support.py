@@ -15,7 +15,7 @@ _path = os.path.realpath(os.path.abspath(os.path.join(__file__,'../..')))
 sys.path.append(_path)
 try:
     import utils
-except:
+except ImportError as e:
     import pyutils as utils
 
 try:

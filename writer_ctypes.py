@@ -108,7 +108,12 @@ class WriterCTypes(Writer):
         self.putln1()
         self.putln1("def __init__(self, **kwargs):")
         self.putln2("super({}, self).__init__(**kwargs)".format(structname)),
+
         self.putln2("self.freeze()")
         self.putln2("")
 
+        ###################################################################
+        ###################################################################
+        if self.tablesSupport:
+            self.printTablesSupport(members)
 

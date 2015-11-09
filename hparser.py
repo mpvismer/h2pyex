@@ -217,11 +217,13 @@ class HeaderParser(object):
 
     REGEX_CHAR = re.compile(r"'(\\.[^\\]*|[^\\])'")
     REGEX_HEX = re.compile(r"0x([0-9a-fA-F]+)L?")
+    REGEX_U = re.compile(r"([^a-z^A-Z^_])([0-9]*)[uU]{1}")
     def pytify(self, body):
         '''
         This is a code snippet extracted from h2py.
         '''
         body = self.REGEX_CHAR.sub("ord('\\1')", body)
+        body = self.REGEX_U.sub(r"\1\2", body)
         start = 0
         UMAX = 2 * (sys.maxint + 1)
         while 1:

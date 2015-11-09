@@ -11,13 +11,44 @@ import sys
 import copy
 
 from .support import *
-
 from .abstractstruct import *
+
+
+TYPE_TO_HDF5_MAP = {
+    'bool':  'BoolCol',
+    'char' : 'StringCol',
+
+    'bool_t': 'BoolCol',
+    'int8_t': 'Int8Col',
+    'uint8_t':'UInt8Col',
+    'int16_t':'Int16Col',
+    'uint16_t':'UInt16Col',
+    'int32_t':'Int32Col',
+    'uint32_t':'UInt32Col',
+    'int64_t':'Int64Col',
+    'uint64_t':'UInt64Col',
+
+    'INT8':'Int8Col',
+    'UINT8':'UInt8Col',
+    'INT16':'Int16Col',
+    'UINT16':'UInt16Col',
+    'INT32':'Int32Col',
+    'UINT32':'UInt32Col',
+    'INT64':'Int64Col',
+    'UINT64':'UInt64Col',
+
+    'float' : 'Float32Col',
+    'double' : 'Float64Col',
+
+    'float32_t' : 'Float32Col',
+    'float64_t' : 'Float64Col'
+}
+
 
 TYPE_2_STRUCT_FORMAT = {
     'bool': '?',
-    'bool_t': '?',
 
+    'bool_t': '?',
     'int8_t':'b',
     'uint8_t':'B',
     'int16_t':'h',
@@ -46,8 +77,8 @@ TYPE_2_STRUCT_FORMAT = {
 
 TYPE_2_DEFAULTS = {
     'bool': 'False',
-    'bool_t': 'False',
 
+    'bool_t': 'False',
     'int8_t': '0',
     'uint8_t': '0',
     'int16_t': '0',
@@ -85,6 +116,7 @@ class Writer(object):
         default_endianness=ENDIANNESS_NATIVE,
         packing=1,
         indentation='    ',
+        tablesSupport=False,
         type_map=TYPE_2_STRUCT_FORMAT,
         defaults_map=TYPE_2_DEFAULTS):
         '''
@@ -93,7 +125,7 @@ class Writer(object):
         super(Writer, self).__init__()
         self.type_map = copy.deepcopy(type_map)
         self.defaults_map = copy.deepcopy(defaults_map)
-
+        self.hdf5_map = copy.deepcopy(TYPE_TO_HDF5_MAP)
         self.has_dependencies = False
         if output is None:
             self.output = sys.stdout
@@ -104,7 +136,7 @@ class Writer(object):
         self.indentation = indentation
         self.default_endianness = default_endianness
         self.packing = packing
-
+        self.tablesSupport=True
         #self.putln("from __future__ import unicode_literals")
 
 
@@ -155,10 +187,12 @@ class Writer(object):
         '''
         try :
             actualtype = self.type_map[typename]
+            actualhdf5type = self.hdf5_map[typename]
         except:
             raise UnsupportedDataTypeException("For {} on line {}.".format(typename, lineno))
         else:
             self.type_map[defname] = actualtype
+            self.hdf5_map[defname] = actualtype
         self._check_dependencies()
         self._put_comment(comment, 1)
         self.putln("{} = '{}'".format(defname, actualtype))
@@ -303,8 +337,33 @@ class Writer(object):
 
         ###################################################################
         ###################################################################
+        if self.tablesSupport:
+            self.printTablesSupport(members)
+
+        ###################################################################
+        ###################################################################
         if final_comment:
             self.putln(self._format_comment_block(final_comment, 1))
         self.putln("\n")
 
 
+    def printTablesSupport(self, members):
+        '''
+        Writes out the make_table_descriptor function.
+        '''
+        self.putln()
+        self.putln1("def make_table_descriptor(self):")
+        self.putln1("    import tables")
+        self.putln1("    class TableRow(tables.IsDescription):")
+        self.putln1("        time = tables.Float32Col(pos=1)")
+        for i, (attribname, typename, arraysize, comment) in enumerate(members):
+            try:
+                hdf5type = self.hdf5_map[typename]
+                if arraysize>=0:
+                    self.putln3("{} = tables.{}(pos={}, shape={})\n".format(attribname, hdf5type, i+2, arraysize))
+                else:
+                    self.putln3("{} = tables.{}(pos={})\n".format(attribname, hdf5type, i+2))
+            except KeyError:
+                self.putln3("{0} = self.{0}.make_table_descriptor()".format(attribname))
+        self.putln2("return TableRow")
+        self.putln3()
