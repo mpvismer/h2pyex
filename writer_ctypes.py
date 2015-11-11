@@ -97,9 +97,12 @@ class WriterCTypes(Writer):
         self._put_comment(structcomment,1)
         self._put_comment(final_comment,1)
         self.putln1("_fields_ = [")
-        for (attribname, typename, arraysize, comment) in members:
-            if arraysize>=0:
-                self.putln2("('{0}', {1}*{2}),".format(attribname, self.type_map[typename], arraysize))
+        for (attribname, typename, dimensions, comment) in members:
+            if dimensions is not None:
+                typestring = self.type_map[typename]
+                for dim in reversed(dimensions):
+                    typestring = '({}*{})'.format(typestring, dim)
+                self.putln2("('{0}', {1}),".format(attribname, typestring))
             else:
                 self.putln2("('{0}', {1}),".format(attribname, self.type_map[typename]))
         self.putln1("]")

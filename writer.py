@@ -178,7 +178,8 @@ class Writer(object):
             self.putln("")
             self.putln("# Support for structure types.")
             self.putln('import struct')
-            self.putln('from h2pyex.abstractstruct import AbstractStruct')
+            self.putln('import copy')
+            self.putln('from h2pyex import AbstractStruct, utils')
             self.has_struct_dependencies = True
 
     def write_typedef(self, defname, typename, comment, lineno):
@@ -201,20 +202,22 @@ class Writer(object):
         '''
         Writes the python code for a class to serialise/deserialise a structure.
         '''
-
         self._check_dependencies()
-
         self.putln("class {}(AbstractStruct):".format(structname))
         self.putln1("'''")
         self.putln1(self._format_comment_block(comment, 1))
         self.putln1("'''")
         self.putln1()
+
         self.putln1('_fields_ = [')
-        for (attribname, typename, arraysize, comment) in members:
-            if arraysize>=0:
-                self.putln3("('{}', '{}*{}'),".format(attribname, typename, arraysize))
-            else:
+        for (attribname, typename, dimensions, comment) in members:
+            if dimensions is None:
                 self.putln3("('{}', '{}'),".format(attribname, typename))
+            else:
+                typestring = typename
+                for dim in reversed(dimensions):
+                    typestring = '({}*{})'.format(typename, dim)
+                self.putln3("('{}', '{}'),".format(attribname,typestring))
         self.putln2(']')
         self.putln1()
 
@@ -233,18 +236,26 @@ class Writer(object):
 
         fmt = ''
         struct_classes = []
-        for (attribname, typename, arraysize, comment) in members:
-            if arraysize>=0:
+        for (attribname, typename, dimensions, comment) in members:
+            if dimensions is not None:
                 try:
-                    struct_format = self.type_map[typename]*arraysize
+                    formatstring = self.type_map[typename]
                     defaultvalue = self.defaults_map[typename]
-                    fmt+= struct_format
-                    self.putln2("self._struct_{0} = struct.Struct(str(endianness + '{1}'*{2}))".format(attribname, struct_format, arraysize))
-                    self.putln2("self.{0} = kwargs.get('{0}', {1}*[{2}])".format(attribname, arraysize, defaultvalue))
+                    defaultstring = '{}'.format(defaultvalue)
+                    for dim in reversed(dimensions):
+                        formatstring = formatstring*dim
+                        defaultstring = 'map(copy.copy, [{}]*{})'.format(defaultstring, dim)
+                    fmt+= formatstring
+                    self.putln2("self._struct_{0} = struct.Struct(str(endianness + '{1}'))".format(attribname, formatstring))
+                    self.putln2("self.{0} = kwargs.get('{0}', {1})".format(attribname, defaultstring))
                 except KeyError:
-                    struct_classes.append((typename, arraysize))
-                    self.putln2("self.{0} = kwargs.get('{0}', [{1}() for _ in range({2})])".format(attribname, typename, arraysize))
-                self.putln2('''assert {0}==len(self.{1}), "Attribute '{1}' has invalid length."'''.format(arraysize, attribname, attribname))
+                    struct_classes.append((typename, dimensions))
+                    cnt = 1
+                    for dim in dimensions:
+                        cnt *= dim
+                    self.putln2('init_temp = [ {}() for idx in range(0,{})]'.format(typename, cnt))
+                    self.putln2("self.{0} = kwargs.get('{0}', utils.array_unflattern(init_temp, {1}))".format(attribname, repr(dimensions)))
+                self.putln2('''if {0}!=len(self.{1}): raise ValueError("Attribute '{1}' has invalid length.")'''.format(dimensions[0], attribname))
             else:
                 try:
                     struct_format = self.type_map[typename]
@@ -253,21 +264,23 @@ class Writer(object):
                     self.putln2("self._struct_{0} = struct.Struct(str(endianness + '{1}'))".format(attribname, struct_format))
                     self.putln2("self.{0} = kwargs.get('{0}', {1})".format(attribname, defaultvalue))
                 except KeyError:
-                    struct_classes.append((typename, -1))
+                    struct_classes.append((typename, None))
                     self.putln2("self.{0} = kwargs.get('{0}', {1}())".format(attribname, typename))
             self.putln2("if kwargs.has_key('{0}'): del kwargs['{0}']".format(attribname))
         self.putln2("if kwargs: raise Exception('Unused args: ' + str(kwargs))")
         self.putln2("self._endianness = endianness")
         self.putln2("# Note that if there are nested structs, self._packing_struct is incomplete")
         self.putln2("# and just used for calculating the packed size.")
-        self.putln2("self._packingFormat = endianness + '{}'".format(fmt))
-        self.putln2("self._packing_struct = struct.Struct(str(self._packingFormat))")
+        self.putln2("self._packing_format = endianness + '{}'".format(fmt))
+        self.putln2("self._packing_struct = struct.Struct(str(self._packing_format))")
 
         self.putln2("self._packed_size = self._packing_struct.size")
         if struct_classes:
-            for cls, cnt in struct_classes:
-                if cnt<0:
-                    cnt = 1
+            for cls, dims in struct_classes:
+                cnt = 1
+                if dims is not None:
+                    for dim in dims:
+                        cnt *= dim
                 self.putln2("self._packed_size += {}().packed_size()*{}".format(cls, cnt))
 
         self.putln2("self.freeze()")
@@ -278,26 +291,24 @@ class Writer(object):
         self.putln1("def serialise(self):")
         if len(struct_classes)==0:
             self.putln2("return self._packing_struct.pack( *(\\")
-            for (attribname, typename, arraysize, comment) in members:
-                if arraysize>=0:
-                    self.putln3("list(self.{}) + \\".format(attribname))
+            for (attribname, typename, dimensions, comment) in members:
+                if dimensions is not None:
+                    self.putln3("utils.array_flattern(self.{}) + \\".format(attribname))
                 else:
                     self.putln3("[self.{}] + \\".format(attribname))
             self.putln3("[] ))")
         else:
-            self.putln2("data = []\n")
-            for (attribname, typename, arraysize, comment) in members:
+            self.putln2("data = []")
+            for (attribname, typename, dimensions, comment) in members:
                 try:
                     struct_format = self.type_map[typename]
-                    if arraysize==0:
-                        print("Attribute %s has array size of 0 and was omitted." % attribname)
-                    if arraysize>=0:
-                        self.putln2("data.append(self._struct_{0}.pack(*self.{0}))".format(attribname))
+                    if dimensions is not None:
+                        self.putln2("data.append(self._struct_{0}.pack(*utils.array_flattern(self.{0})))".format(attribname))
                     else:
                         self.putln2("data.append(self._struct_{0}.pack(self.{0}))".format(attribname))
                 except KeyError:
-                    if arraysize>=0:
-                        self.putln2("for element in self.{}:".format(attribname) )
+                    if dimensions is not None:
+                        self.putln2("for element in utils.array_flattern(self.{}):".format(attribname) )
                         self.putln3(    "data.append(element.serialise())")
                     else:
                         self.putln2("data.append(self.{0}.serialise())".format(attribname))
@@ -310,25 +321,28 @@ class Writer(object):
         if len(struct_classes)==0:
             self.putln2("results = self._packing_struct.unpack_from(buf, offset)")
             idx = 0;
-            for (attribname, typename, arraysize, comment) in members:
-                if arraysize>=0:
-                    self.putln2("self.{} = results[{}:{}]".format(attribname, idx, idx+arraysize))
+            for (attribname, typename, dimensions, comment) in members:
+                if dimensions is not None:
+                    arraysize = 1
+                    for dim in dimensions:
+                        arraysize *= dim
+                    self.putln2("self.{} = utils.array_unflattern(results[{}:{}],{})".format(attribname, idx, idx+arraysize, repr(dimensions)))
                     idx+=arraysize
                 else:
                     self.putln2("self.{} = results[{}]".format(attribname, idx))
                     idx+=1
         else:
-            for (attribname, typename, arraysize, comment) in members:
+            for (attribname, typename, dimensions, comment) in members:
                 try:
                     field_format = self.type_map[typename]
-                    if arraysize>=0:
-                        self.putln2("self.{0} = self._struct_{0}.unpack_from(buf, offset)".format(attribname))
+                    if dimensions is not None:
+                        self.putln2("self.{0} = utils.array_unflattern(self._struct_{0}.unpack_from(buf, offset),{1})".format(attribname, repr(dimensions)))
                     else:
                         self.putln2("(self.{0},) = self._struct_{0}.unpack_from(buf, offset)".format(attribname))
                     self.putln2("offset += self._struct_{0}.size".format(attribname))
                 except KeyError:
-                    if arraysize>=0:
-                        self.putln2("for element in self.{}:".format(attribname) )
+                    if dimensions is not None:
+                        self.putln2("for element in utils.array_flattern(self.{}):".format(attribname) )
                         self.putln2("    element.deserialise_from(buf, offset)")
                         self.putln2("    offset += element.packed_size()")
                     else:
@@ -356,13 +370,13 @@ class Writer(object):
         self.putln1("    import tables")
         self.putln1("    class TableRow(tables.IsDescription):")
         self.putln1("        time = tables.Float32Col(pos=1)")
-        for i, (attribname, typename, arraysize, comment) in enumerate(members):
+        for i, (attribname, typename, dimensions, comment) in enumerate(members):
             try:
                 hdf5type = self.hdf5_map[typename]
-                if arraysize>=0:
-                    self.putln3("{} = tables.{}(pos={}, shape={})\n".format(attribname, hdf5type, i+2, arraysize))
+                if dimensions>=0:
+                    self.putln3("{} = tables.{}(pos={}, shape={})".format(attribname, hdf5type, i+2, repr(dimensions)))
                 else:
-                    self.putln3("{} = tables.{}(pos={})\n".format(attribname, hdf5type, i+2))
+                    self.putln3("{} = tables.{}(pos={})".format(attribname, hdf5type, i+2))
             except KeyError:
                 self.putln3("{0} = self.{0}.make_table_descriptor()".format(attribname))
         self.putln2("return TableRow")

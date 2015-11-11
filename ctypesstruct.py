@@ -29,12 +29,7 @@ class CTypesStruct(AbstractStruct):
             if name in kwargs:
                 val = getattr(self, name)
                 initval = kwargs.pop(name)
-                if hasattr(val,'__getitem__'):
-                    #its an array
-                    assert len(val) == len(initval)
-                    getattr(self, name)[:] = initval
-                else:
-                    setattr(self, name, initval)
+                setattr(self, name, initval)
 
     def packed_size(self):
         ''' Returns the packet size when serialized. '''

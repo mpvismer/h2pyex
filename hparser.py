@@ -62,7 +62,7 @@ def import_cheader(filename, asname=None, add_to_sys_modules=True):
     hr = HeaderParser(
         source=filename, output=out, errstream=None)
     hr.parse()
-    exec out.getvalue() in module.__dict__
+    exec(out.getvalue(), module.__dict__)
     if add_to_sys_modules:
         sys.modules[asname] = module
     return module
@@ -285,7 +285,7 @@ class HeaderParser(object):
                 body = 'None'
             stmt = '%s = %s' % (name, body.strip())
             try:
-                exec stmt in self.env
+                exec(stmt, self.env)
             except:
                 self._put_error("Unable to evaluate: '%s'\n  From line %d:\n\t%s\n"  % (stmt, self.current_lineno, self.current_codeline))
             else:
@@ -307,7 +307,7 @@ class HeaderParser(object):
             body = self.pytify(body)
             stmt = "def %s(%s): return %s\n" % (macro, arg, body)
             try:
-                exec pythonCode in self.env
+                exec(pythonCode, self.env)
             except:
                 self._put_error(traceback.format_exc())
                 raise ParseException("Could not evaluate macro '%s'." % (stmt), self.current_lineno)
@@ -386,12 +386,21 @@ class HeaderParser(object):
                         arr_match = re.match('\[(.*)\]', clean(markup))
                         if arr_match:
                             try:
-                                arraysize = eval(arr_match.group(1), self.env)
+                                arraysize = (eval(arr_match.group(1), self.env),)
                             except:
-                                traceback.print_exc()
-                                raise ParseException("Failed to extract array definition from '%s'" % arr_match.group(1), self.current_lineno)
+                                #traceback.print_exc()
+                                #raise ParseException("Failed to extract array definition from '%s'" % arr_match.group(1), self.current_lineno)
+                                try:
+                                    arr_match = re.match('\[(.*)\]\[(.*)\]', clean(markup))
+                                    if arr_match:
+                                        arraysize = (eval(arr_match.group(1), self.env), eval(arr_match.group(2), self.env) )
+                                    else:
+                                        raise
+                                except:
+                                    traceback.print_exc()
+                                    raise ParseException("Failed to extract array definition from '%s'" % arr_match.group(1), self.current_lineno)
                         else:
-                             arraysize = -1
+                             arraysize = None
 
                         if self.current_comment:
                             comment += self.current_comment
@@ -424,7 +433,7 @@ class HeaderParser(object):
             final_comment = self.current_comment + self.current_inline_comment
 
             expr = 'class %s:\n\tpass\n' % structname
-            exec expr in self.env
+            exec(expr, self.env)
 
             return (structname, structcomment, members, final_comment)
             #END OF if match:
@@ -434,7 +443,7 @@ class HeaderParser(object):
         '''
         Add a python expression to the module.
         '''
-        exec expr in self.env
+        exec(expr, self.env)
         self.writer.putln(expr.rstrip('\r\n\t '))
 
 

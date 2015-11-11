@@ -44,17 +44,38 @@ class AbstractStruct(object):
         '''
         Overrides base class.
         '''
+        def set_array(obj, newobj):
+            assert hasattr(obj, '__getitem__')
+            if len(obj)==0:
+                return
+            if isinstance(obj[0], AbstractStruct):
+                for idx in range(0, len(obj)):
+                    assert isinstance(obj[idx], AbstractStruct)
+                    for key, val in utils.enum_fields(newobj[idx]):
+                        setattr(obj[idx], key, val)
+            elif hasattr(obj[0], '__getitem__'):
+                for idx in range(0, len(obj)):
+                    set_array(obj[idx], newobj[idx])
+            else:
+                obj[:] = newobj[:]
+
         if self._frozen:
             if not hasattr(self, key):
                 raise AttributeError('Struct class is "frozen". Cannot add attribute {}.'.format(key))
             if (not allow_private) and key.startswith('_'):
                 raise AttributeError('Attribute {} is private and cannot be changed in a "frozen" class.'.format(key))
-        if isinstance(getattr(self, key, None), AbstractStruct):
+
+        oldval = getattr(self, key, None)
+        if isinstance(oldval, str) or isinstance(oldval, unicode):
+            super(AbstractStruct,self).__setattr__(key, value)
+        elif isinstance(oldval, AbstractStruct):
             if isinstance(value, AbstractStruct):
                 getattr(self, key).deserialise(value.serialise())
             else:
                 _logger.debug('Attempting to update struct field "%s" from %s.', (key, value))
                 getattr(self, key).update(value)
+        elif hasattr(oldval,'__getitem__'):
+            set_array(oldval, value)
         else:
             super(AbstractStruct,self).__setattr__(key, value)
 
@@ -80,13 +101,6 @@ class AbstractStruct(object):
 
     def __ne__(self, other):
         return not self.__eq__(other)
-
-
-    def _indent_lines(self, complex_str):
-        ''' Indents the lines in the string. '''
-        lines = complex_str.splitlines()
-        res = "  " + "\n  ".join(lines)
-        return res
 
 
     def freeze(self):
@@ -131,9 +145,11 @@ class AbstractStruct(object):
         '''
         def update_array(obj, val, verbose):
             updated = False
-            if obj[:]!=val[:]:
-                mlen = min(len(field), len(val))
-                if (mlen > 0):
+            if len(obj)==0:
+                return
+            mlen = min(len(obj), len(val))
+            if (mlen > 0):
+                if obj[:mlen]!=val[:mlen]:
                     if isinstance(obj[0], AbstractStruct):
                         for idx in range(0, mlen):
                             assert isinstance(obj[idx], AbstractStruct)
@@ -143,9 +159,9 @@ class AbstractStruct(object):
                             assert hasattr(obj[idx], '__getitem__')
                             updated |= update_array(obj[idx], val[idx], verbose=verbose)
                     else:
-                        msg = 'Existing field array "{}={}" updating to "{}".'.format(name, field[:], val[:])
+                        msg = 'Existing field array "{}={}" updating to "{}".'.format(name, obj[:], val[:])
                         updated = True
-                        field[:mlen] = val[:mlen]
+                        obj[:mlen] = val[:mlen]
                         show_it(msg)
             return updated
 
@@ -173,6 +189,24 @@ class AbstractStruct(object):
         return updated
 
 
+    def pythonise(self):
+        '''
+        Convert to python objects - structs to dictionaries and arrays to lists.
+        '''
+        def convert_val(val):
+            if isinstance(val, AbstractStruct):
+                res = val.pythonise()
+            elif hasattr(val, '__getitem__'):
+                res = list(convert_val(item) for item in val)
+            else:
+                res = val
+            return res
+        d = {}
+        for field, val in utils.enum_fields(self):
+            d[field] = convert_val(val)
+        return d
+
+
     def __repr__(self):
         '''
         Must be unambiguous.
@@ -180,8 +214,8 @@ class AbstractStruct(object):
         rep = "%s(" % (self.__class__.__name__)
         if hasattr(self, '_endianness'): rep += "\n  endianness=%r," % self._endianness
         lines = []
-        for field, val in clsfields(self):
-            lines.append(self._indent_lines("%s=%s" % (field, _stringit(val, fn=repr))))
+        for field, val in utils.enum_fields(self):
+            lines.append(_indent_lines("%s=%s" % (field, _stringit(val, fn=repr))))
         rep += '\n' + ',\n'.join(lines)
         rep += ')'
         return rep
@@ -191,11 +225,11 @@ class AbstractStruct(object):
         ''' Multi-line pretty printing of the class's members. '''
         disp_str = self.__class__.__name__ + "@0x%08x:" % id(self)
         wasField = False
-        for field, val in clsfields(self):
-            disp_str+= "\n" + self._indent_lines("%s = %s" % (field, _stringit(val, True)))
+        for field, val in utils.enum_fields(self):
+            disp_str+= "\n" + _indent_lines("%s = %s" % (field, _stringit(val, True)))
             wasField = True
         if not wasField:
-            disp_str += "\n" + self._indent_lines("<empty struct>")
+            disp_str += "\n" + _indent_lines("<empty struct>")
         return disp_str
 
 
@@ -203,16 +237,32 @@ def _stringit(val, abreviate=False, fn=str):
     if hasattr(val, '__getitem__'):
         if abreviate and (len(val) > 8):
             if isinstance(val[0], AbstractStruct):
-                return '[\n' + ',\n'.join(['  ' + fn(x) for x in val[:6]]) + ',\n  ...\n  ' + fn(val[-1])+'\n]'
+                return '[\n' + ',\n'.join([_indent_lines(fn(x)) for x in val[:6]]) + ',\n  ...\n  ' + fn(val[-1])+'\n]'
+            elif hasattr(val[0], '__getitem__'):
+                return '[\n' + ',\n'.join([_indent_lines(_stringit(x, fn=fn)) for x in val]) + '\n]'
             else:
                 return '[' + ', '.join([fn(x) for x in val[:6]]) + ', ... ' + fn(val[-1])+']'
         else:
-            if isinstance(val[0], AbstractStruct):
-                return '[\n' + ',\n'.join(['  ' + fn(x) for x in val]) + '\n]'
+            if len(val)==0:
+                if fn==str:
+                    return '[null]'
+                else:
+                    return '[]'
+            elif isinstance(val[0], AbstractStruct):
+                return '[\n' + ',\n'.join([_indent_lines(fn(x)) for x in val]) + '\n]'
+            elif hasattr(val[0], '__getitem__'):
+                return '[\n' + ',\n'.join([_indent_lines(_stringit(x, fn=fn)) for x in val]) + '\n]'
             else:
                 return fn(val[:])
     else:
-        return val
+        return fn(val)
+
+
+def _indent_lines(complex_str):
+    ''' Indents the lines in the string. '''
+    lines = complex_str.splitlines()
+    res = "  " + "\n  ".join(lines)
+    return res
 
 
 if __name__ == "__main__":
