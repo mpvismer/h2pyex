@@ -1,5 +1,6 @@
 '''
 @author Mark Vismer
+
 '''
 
 from __future__ import absolute_import
@@ -11,12 +12,14 @@ import os
 import sys
 import re
 
-_path = os.path.realpath(os.path.abspath(os.path.join(__file__,'../..')))
+_path = os.path.realpath(os.path.abspath(os.path.join(__file__,'../../../Python')))
 sys.path.append(_path)
 try:
-    import utils
-except ImportError as e:
     import pyutils as utils
+    from pyutils import isstr, enum_fields
+except ImportError as e:
+    import utils
+    from utils import isstr, enum_fields
 
 try:
     from .userexceptions import *
@@ -29,7 +32,7 @@ def clean(s):
     return s.strip(' \t\n\r\f\v')
 
 
-COMMENT_START_REGEX = re.compile(r'((//)|(/\*)|(\"))')
+COMMENT_START_REGEX = re.compile(r'((///?)|(/\*\*?)|(\"))')
 
 def process_line_for_comments(line, inside_comment=False, inside_string=False):
     '''
@@ -73,8 +76,8 @@ def process_line_for_comments(line, inside_comment=False, inside_string=False):
                     code += "'''" + line[:(end-1)]
                     line = line[end:]
                 else:
-                    code += line[:m.end()-2]
-                    if m.group(1)=='/*':
+                    code += line[:m.start()]
+                    if m.group(1).startswith('/*'):
                         line = line[m.end():]
                         inside_comment = True
                     else:
@@ -86,18 +89,5 @@ def process_line_for_comments(line, inside_comment=False, inside_string=False):
                 break
 
     return code, comment, inside_comment, inside_string
-
-
-
-
-def isstr(x):
-    return type(x) in [type(b''), type(u'')]
-
-def clsfields(cls):
-    for member in dir(cls):
-        val = getattr(cls, member)
-        if not callable(val) and not member.startswith('_'):
-             yield (member, val)
-
 
 

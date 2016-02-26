@@ -51,8 +51,10 @@ class AbstractStruct(object):
             if isinstance(obj[0], AbstractStruct):
                 for idx in range(0, len(obj)):
                     assert isinstance(obj[idx], AbstractStruct)
-                    for key, val in utils.enum_fields(newobj[idx]):
+                    for key, val in enum_fields(newobj[idx]):
                         setattr(obj[idx], key, val)
+            elif isstr(obj):
+                obj = newobj
             elif hasattr(obj[0], '__getitem__'):
                 for idx in range(0, len(obj)):
                     set_array(obj[idx], newobj[idx])
@@ -66,7 +68,7 @@ class AbstractStruct(object):
                 raise AttributeError('Attribute {} is private and cannot be changed in a "frozen" class.'.format(key))
 
         oldval = getattr(self, key, None)
-        if isinstance(oldval, str) or isinstance(oldval, unicode):
+        if isstr(oldval):
             super(AbstractStruct,self).__setattr__(key, value)
         elif isinstance(oldval, AbstractStruct):
             if isinstance(value, AbstractStruct):
@@ -92,7 +94,7 @@ class AbstractStruct(object):
         equal = False
         if isinstance(other, AbstractStruct):
             equal = self.serialise()==other.serialise()
-            #for (key, val) in clsfields(self):
+            #for (key, val) in enum_fields(self):
             #    if val != getattr(other, key, None):
             #        return False
             #equal = True
@@ -134,7 +136,7 @@ class AbstractStruct(object):
         Tries to update the fields of this structure with those from other.
         '''
         updated = False
-        for key, val in utils.enum_fields(other):
+        for key, val in enum_fields(other):
             updated |= self.update_field(key, val, verbose)
         return updated
 
@@ -202,7 +204,7 @@ class AbstractStruct(object):
                 res = val
             return res
         d = {}
-        for field, val in utils.enum_fields(self):
+        for field, val in enum_fields(self):
             d[field] = convert_val(val)
         return d
 
@@ -214,7 +216,7 @@ class AbstractStruct(object):
         rep = "%s(" % (self.__class__.__name__)
         if hasattr(self, '_endianness'): rep += "\n  endianness=%r," % self._endianness
         lines = []
-        for field, val in utils.enum_fields(self):
+        for field, val in enum_fields(self):
             lines.append(_indent_lines("%s=%s" % (field, _stringit(val, fn=repr))))
         rep += '\n' + ',\n'.join(lines)
         rep += ')'
@@ -225,7 +227,7 @@ class AbstractStruct(object):
         ''' Multi-line pretty printing of the class's members. '''
         disp_str = self.__class__.__name__ + "@0x%08x:" % id(self)
         wasField = False
-        for field, val in utils.enum_fields(self):
+        for field, val in enum_fields(self):
             disp_str+= "\n" + _indent_lines("%s = %s" % (field, _stringit(val, True)))
             wasField = True
         if not wasField:

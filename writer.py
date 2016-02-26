@@ -1,5 +1,6 @@
 '''
 @author Mark Vismer
+
 '''
 
 from __future__ import absolute_import
@@ -116,7 +117,7 @@ class Writer(object):
         default_endianness=ENDIANNESS_NATIVE,
         packing=1,
         indentation='    ',
-        tablesSupport=False,
+        tablesSupport=True,
         type_map=TYPE_2_STRUCT_FORMAT,
         defaults_map=TYPE_2_DEFAULTS):
         '''
@@ -136,7 +137,7 @@ class Writer(object):
         self.indentation = indentation
         self.default_endianness = default_endianness
         self.packing = packing
-        self.tablesSupport=True
+        self.tablesSupport=tablesSupport
         #self.putln("from __future__ import unicode_literals")
 
 
@@ -147,15 +148,33 @@ class Writer(object):
         lines = comment.splitlines()
         output = ''
         for line in lines:
-            output += ''.join([self.indentation]*indentation_count)
-            output += '#' + line + '\n'
+            output += self.indentation*indentation_count
+            output += '# ' + line.strip() + '\n'
         return output
+
+
+    def _format_string_block(self, text, indentation_count=0):
+        '''
+        Applies indentation to the lines of a string.
+        '''
+        lines = text.splitlines()
+        prefix = self.indentation*indentation_count
+        return prefix + ('\n' + prefix).join(lines) + '\n'
+
 
     def _put_comment(self, comment, indentation_count=0):
         '''
         Prints out the comment block with correct formatting.
         '''
         self.output.write(self._format_comment_block(comment, indentation_count))
+
+    def put_doc_comment(self, doc_comment, indentation_count=0):
+        '''
+        Formats and prints out a docstring.
+        '''
+        self.output.write(self.indentation*indentation_count + "'''\n")
+        self.output.write(self._format_string_block(doc_comment.rstrip(), indentation_count))
+        self.output.write(self.indentation*indentation_count + "'''\n")
 
     def putln(self, line=""):
         self.output.write(line + "\n")
@@ -204,10 +223,7 @@ class Writer(object):
         '''
         self._check_dependencies()
         self.putln("class {}(AbstractStruct):".format(structname))
-        self.putln1("'''")
-        self.putln1(self._format_comment_block(comment, 1))
-        self.putln1("'''")
-        self.putln1()
+        self.put_doc_comment(comment, 1)
 
         self.putln1('_fields_ = [')
         for (attribname, typename, dimensions, comment) in members:

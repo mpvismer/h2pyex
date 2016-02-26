@@ -1,5 +1,6 @@
 '''
 @author Mark Vismer
+
 '''
 
 from __future__ import absolute_import
@@ -20,8 +21,8 @@ TYPE_2_CTYPE_MAP = {
     'uint8_t'   : c_ubyte,
     'int16_t'   : c_short,
     'uint16_t'  : c_ushort,
-    'int32_t'   : c_long,
-    'uint32_t'  : c_ulong,
+    'int32_t'   : c_int,
+    'uint32_t'  : c_uint,
     'int64_t'   : c_longlong,
     'uint64_t'  : c_ulonglong,
 
@@ -29,8 +30,8 @@ TYPE_2_CTYPE_MAP = {
     'UINT8'     : c_ubyte,
     'INT16'     : c_short,
     'UINT16'    :  c_ushort,
-    'INT32'     : c_long,
-    'UINT32'    : c_ulong,
+    'INT32'     : c_int,
+    'UINT32'    : c_uint,
     'INT64'     : c_longlong,
     'UINT64'    : c_ulonglong,
 
@@ -49,8 +50,8 @@ TYPE_2_CTYPESTR_MAP = {
     'uint8_t'   : 'c_ubyte',
     'int16_t'   : 'c_short',
     'uint16_t'  : 'c_ushort',
-    'int32_t'   : 'c_long',
-    'uint32_t'  : 'c_ulong',
+    'int32_t'   : 'c_int',
+    'uint32_t'  : 'c_uint',
     'int64_t'   : 'c_longlong',
     'uint64_t'  : 'c_ulonglong',
 
@@ -58,8 +59,8 @@ TYPE_2_CTYPESTR_MAP = {
     'UINT8'     : 'c_ubyte',
     'INT16'     : 'c_short',
     'UINT16'    : 'c_ushort',
-    'INT32'     : 'c_long',
-    'UINT32'    : 'c_ulong',
+    'INT32'     : 'c_int',
+    'UINT32'    : 'c_uint',
     'INT64'     : 'c_longlong',
     'UINT64'    : 'c_ulonglong',
 
@@ -94,8 +95,7 @@ class WriterCTypes(Writer):
     def write_struct_class(self, structname, structcomment, members, final_comment=''):
         self._check_dependencies()
         self.putln("class {}(CTypesStruct, {}):".format(structname, ENDIANNESS_MAP[self.default_endianness]))
-        self._put_comment(structcomment,1)
-        self._put_comment(final_comment,1)
+        self.put_doc_comment(structcomment + "\n" + final_comment,1)
         self.putln1("_fields_ = [")
         for (attribname, typename, dimensions, comment) in members:
             if dimensions is not None:
@@ -106,7 +106,7 @@ class WriterCTypes(Writer):
             else:
                 self.putln2("('{0}', {1}),".format(attribname, self.type_map[typename]))
         self.putln1("]")
-        self.putln1("_pack_ = %u"%self.packing)
+        self.putln1("_pack_ = %u" % self.packing)
         self.type_map[structname] = structname
         self.putln1()
         self.putln1("def __init__(self, **kwargs):")
