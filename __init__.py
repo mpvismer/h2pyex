@@ -1,7 +1,7 @@
-'''
+"""
 @author Mark Vismer
 A package for parsing for using definitions in a c header file.
-'''
+"""
 
 
 from abstractstruct import *

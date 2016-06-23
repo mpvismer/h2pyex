@@ -1,6 +1,6 @@
-'''
+"""
 @author Mark Vismer
-'''
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,179 +27,233 @@ ENDIANNESS_NATIVE = '='
 
 
 class AbstractStruct(object):
-    '''
+    """
     Abstract class for implementing struct classes.
-    '''
-
+    """
+    
     _frozen = False
-
+    
     _packed_size = None
-
+    
     def __init__(self):
-        '''Constructor'''
+        """Constructor"""
         super(AbstractStruct, self).__init__()
-
-
-    def __setattr__(self, key, value, allow_private=False):
-        '''
+    
+    
+    def __setattr__(self, name, value, allow_private=False):
+        """
         Overrides base class.
-        '''
-        def set_array(obj, newobj):
+        """
+        def set_struct(obj, newval):
+            if isinstance(newval, AbstractStruct):
+                obj.deserialise(newval.serialise())
+            else:
+                for key, val in enum_fields(newval):
+                    setattr(obj, key, val)
+        
+        def set_array(obj, newval):
             assert hasattr(obj, '__getitem__')
-            if len(obj)==0:
+            if len(newval) > len(obj):
+                raise ValueError("Attribute '{}' has invalid length.".format(str(newval)))
+            newval_len = len(newval)
+            if 0 == newval_len:
                 return
-            if isinstance(obj[0], AbstractStruct):
-                for idx in range(0, len(obj)):
+            elif isinstance(obj[0], AbstractStruct):
+                for idx in range(0, newval_len):
                     assert isinstance(obj[idx], AbstractStruct)
-                    for key, val in enum_fields(newobj[idx]):
-                        setattr(obj[idx], key, val)
-            elif isstr(obj):
-                obj = newobj
+                    set_struct(obj[idx], newval[idx]);
+            elif isstr(obj[0]):
+                for i in range(newval_len):
+                    _newval = newval[i]
+                    if not isstr(_newval):
+                        raise ValueError("Incorrect value {} of type {}. Expected a str.".format(_newval, type(_newval)))
+                    obj[i] = str(_newval)
             elif hasattr(obj[0], '__getitem__'):
-                for idx in range(0, len(obj)):
-                    set_array(obj[idx], newobj[idx])
+                for idx in range(0, newval_len):
+                    set_array(obj[idx], newval[idx])
+            
             else:
-                obj[:] = newobj[:]
-
+                obj[:newval_len] = newval[:newval_len]
+        
         if self._frozen:
-            if not hasattr(self, key):
-                raise AttributeError('Struct class is "frozen". Cannot add attribute {}.'.format(key))
-            if (not allow_private) and key.startswith('_'):
-                raise AttributeError('Attribute {} is private and cannot be changed in a "frozen" class.'.format(key))
-
-        oldval = getattr(self, key, None)
-        if isstr(oldval):
-            super(AbstractStruct,self).__setattr__(key, value)
-        elif isinstance(oldval, AbstractStruct):
-            if isinstance(value, AbstractStruct):
-                getattr(self, key).deserialise(value.serialise())
-            else:
-                _logger.debug('Attempting to update struct field "%s" from %s.', (key, value))
-                getattr(self, key).update(value)
-        elif hasattr(oldval,'__getitem__'):
+            if not hasattr(self, name):
+                raise AttributeError('Struct class is "frozen". Cannot add new attribute {}.'.format(name))
+            if (not allow_private) and name.startswith('_'):
+                raise AttributeError('Attribute {} is private and cannot be changed in a "frozen" class.'.format(name))
+        
+        oldval = getattr(self, name, None)
+        if isinstance(oldval, AbstractStruct):
+            set_struct(oldval, value)
+        elif hasattr(oldval,'__getitem__') and not isstr(oldval):
             set_array(oldval, value)
         else:
-            super(AbstractStruct,self).__setattr__(key, value)
-
-
+            super(AbstractStruct,self).__setattr__(name, value)
+    
     def __delattr__(self, key):
-        ''' Overrides base class. '''
+        """
+        Overrides base class.
+        """
         if self._frozen:
             raise AttributeError( "Parameter {} cannot be deleted.".format(key) )
         super(AbstractStruct,self).__delattr__(key)
-
-
+    
+    
     def __eq__(self, other):
-        ''' Checks if two class have the same data. '''
-        equal = False
+        """
+        Checks if two class have the same data.
+        """
         if isinstance(other, AbstractStruct):
-            equal = self.serialise()==other.serialise()
-            #for (key, val) in enum_fields(self):
-            #    if val != getattr(other, key, None):
-            #        return False
-            #equal = True
-        return equal
-
-
+            return self.serialise()==other.serialise()
+        else:
+            return Exception("TODO")
+    
+    
     def __ne__(self, other):
         return not self.__eq__(other)
-
-
+    
+    
     def freeze(self):
-        ''' Freezes the struct class.'''
+        """
+        Freezes the struct class.
+        """
         self._frozen = True
-
-
+    
+    
     def packed_size(self):
-        ''' Returns the packet size when serialized. '''
+        """
+        Returns the packet size when serialized.
+        """
         return self._packed_size
-
-
+    
+    
     def deserialise(self, data):
-        ''' Calls the deserialise_from buffer '''
+        """
+        Calls the deserialise_from buffer
+        """
         #assert len(data) >= self.packed_size() checked in deserialise_from() anyway
         self.deserialise_from(data, 0)
-
-
+    
+    
     def deserialise_from(self, buf, offset):
-        ''' Deserilise a byte stream from a buffer.'''
+        """
+        Deserilise a byte stream from a buffer.
+        """
         raise NotImplementedError(sys._getframe().f_code.co_name + " must be overridden.")
-
-
+    
+    
     def serialise(self):
-        ''' Serialise a class to a byte stream.'''
+        """
+        Serialise a class to a raw data.
+        """
         raise NotImplementedError(sys._getframe().f_code.co_name + " must be overridden.")
-
-
-    def update(self, other, verbose=False):
-        '''
+    
+    
+    def serialise_into(self, buf):
+        """
+        Serialise a class into a mutable buffer.
+        """
+        raise NotImplementedError(sys._getframe().f_code.co_name + " must be overridden.")
+    
+    def data(self):
+        """
+        Return the data in this struct as a packed mutable byte array whose data shares the
+        memory buffer of the struct.
+        """
+        raise NotImplementedError(sys._getframe().f_code.co_name + " is not supported.")
+    
+    def const_data(self):
+        """
+        Return the data in this struct as a packed string which shares the memory buffer
+        of the struct.
+        """
+        raise NotImplementedError(sys._getframe().f_code.co_name + " is not supported.")
+    
+    
+    def update(self, other, accessor='', verbose=False):
+        """
         Tries to update the fields of this structure with those from other.
-        '''
+        """
         updated = False
         for key, val in enum_fields(other):
-            updated |= self.update_field(key, val, verbose)
+            updated |= self.update_field(key, val, accessor, verbose)
         return updated
-
-
-    def update_field(self, name, val, verbose=False):
-        '''
+    
+    
+    def update_field(self, name, val, accessor='', verbose=False):
+        """
         Updates the field in the structure named <name> only if is different.
-        '''
-        def update_array(obj, val, verbose):
+        """
+        def update_array(obj, newval, accessor, verbose):
+            assert hasattr(obj, '__getitem__')
             updated = False
-            if len(obj)==0:
-                return
-            mlen = min(len(obj), len(val))
+            mlen = min(len(obj), len(newval))
             if (mlen > 0):
-                if obj[:mlen]!=val[:mlen]:
-                    if isinstance(obj[0], AbstractStruct):
-                        for idx in range(0, mlen):
-                            assert isinstance(obj[idx], AbstractStruct)
-                            updated |= obj[idx].update(val[idx], verbose=verbose)
-                    elif hasattr(obj[0], '__getitem__'):
-                        for idx in range(0, mlen):
-                            assert hasattr(obj[idx], '__getitem__')
-                            updated |= update_array(obj[idx], val[idx], verbose=verbose)
-                    else:
-                        msg = 'Existing field array "{}={}" updating to "{}".'.format(name, obj[:], val[:])
+                if isinstance(obj[0], AbstractStruct):
+                    for idx in range(0, mlen):
+                        assert isinstance(obj[idx], AbstractStruct)
+                        updated |= obj[idx].update(newval[idx], accessor+'[{}]'.format(idx), verbose=verbose)
+                elif hasattr(obj[0], '__getitem__') and not isstr(obj[0]):
+                    for idx in range(0, mlen):
+                        assert hasattr(obj[idx], '__getitem__')
+                        updated |= update_array(obj[idx], newval[idx], accessor+'[{}]'.format(idx), verbose=verbose)
+                elif hasattr(obj, '__ctypes_from_outparam__') and isstr(obj[0]):
+                    if isstr(newval):
+                        newval = str(newval+'\0'*(len(obj)-mlen))
+                        mlen = len(obj)
+                    if obj[:]!=newval[:]:
                         updated = True
-                        obj[:mlen] = val[:mlen]
+                        msg = 'Updating string {}, from {}'.format(accessor, repr(obj[:].strip('\0')))
+                        obj[:] = newval[:]
+                        msg += ' to {}.'.format(repr(obj[:]).strip('\0'))
                         show_it(msg)
+                elif (obj[:mlen]!=newval[:mlen]):
+                    updated = True
+                    msg = 'Updating array in field {}, from {}'.format(accessor, repr(obj[:]))
+                    obj[:mlen] = newval[:mlen]
+                    msg += ' to {}.'.format(repr(obj[:]))
+                    show_it(msg)
+                if mlen < len(newval):
+                    msg = 'WARNING: Indexes {}:{} ignored of {} because out of range.'.format(
+                        mlen, len(newval), type(self).__name__)
+                    show_it(msg)
             return updated
-
+        
         def show_it(msg):
             _logger.debug(msg)
             if verbose:
                 print(msg)
-
+        
         updated = False
-        field = getattr(self, name, None)
-        if field is None:
-            msg = 'WARNING: Field "{}={}" could not be updated because it does not exist in "%s".'.format(
-                    name, str(val), type(self).__name__)
+        oldval = getattr(self, name, None)
+        if isinstance(oldval, AbstractStruct):
+            updated |= oldval.update(val, accessor+'.'+name, verbose=verbose)
+        elif hasattr(oldval, '__getitem__') and not isstr(oldval[:]):
+            updated |= update_array(oldval, val, accessor+'.'+name, verbose=verbose)
+        elif oldval is None:
+            msg = 'WARNING: Field "{}={}" could not be updated because it does not exist in "{}".'.format(
+                    name, repr(val), type(self).__name__)
             show_it(msg)
-        elif isinstance(field, AbstractStruct):
-            updated |= field.update(val, verbose=verbose)
-        elif hasattr(field, '__getitem__'):
-            updated |= update_array(field, val, verbose=verbose)
         else:
-            if field!=val:
+            if oldval!=val:
                 updated = True
-                msg = 'Existing field "{}={}" updating to "{}".'.format(name, field, val)
+                msg = 'Updating field {}={} to {}.'.format(name,repr(oldval), repr(val))
                 setattr(self, name, val)
                 show_it(msg)
         return updated
-
-
+    
+    
     def pythonise(self):
-        '''
+        """
         Convert to python objects - structs to dictionaries and arrays to lists.
-        '''
+        """
         def convert_val(val):
             if isinstance(val, AbstractStruct):
                 res = val.pythonise()
             elif hasattr(val, '__getitem__'):
-                res = list(convert_val(item) for item in val)
+                if isstr(val[:]):
+                    res = str(val[:])
+                else:
+                    res = list(convert_val(item) for item in val)
             else:
                 res = val
             return res
@@ -207,12 +261,12 @@ class AbstractStruct(object):
         for field, val in enum_fields(self):
             d[field] = convert_val(val)
         return d
-
-
+    
+    
     def __repr__(self):
-        '''
+        """
         Must be unambiguous.
-        '''
+        """
         rep = "%s(" % (self.__class__.__name__)
         if hasattr(self, '_endianness'): rep += "\n  endianness=%r," % self._endianness
         lines = []
@@ -221,10 +275,10 @@ class AbstractStruct(object):
         rep += '\n' + ',\n'.join(lines)
         rep += ')'
         return rep
-
-
+    
+    
     def __str__(self):
-        ''' Multi-line pretty printing of the class's members. '''
+        """ Multi-line pretty printing of the class's members. """
         disp_str = self.__class__.__name__ + "@0x%08x:" % id(self)
         wasField = False
         for field, val in enum_fields(self):
@@ -245,23 +299,23 @@ def _stringit(val, abreviate=False, fn=str):
             else:
                 return '[' + ', '.join([fn(x) for x in val[:6]]) + ', ... ' + fn(val[-1])+']'
         else:
-            if len(val)==0:
-                if fn==str:
-                    return '[null]'
-                else:
-                    return '[]'
+            if isstr(val):
+                return repr(val)
+            elif len(val)==0:
+                return '[]'
             elif isinstance(val[0], AbstractStruct):
                 return '[\n' + ',\n'.join([_indent_lines(fn(x)) for x in val]) + '\n]'
             elif hasattr(val[0], '__getitem__'):
                 return '[\n' + ',\n'.join([_indent_lines(_stringit(x, fn=fn)) for x in val]) + '\n]'
             else:
+                _logger.warning("This should never happen!")
                 return fn(val[:])
     else:
         return fn(val)
 
 
 def _indent_lines(complex_str):
-    ''' Indents the lines in the string. '''
+    """ Indents the lines in the string. """
     lines = complex_str.splitlines()
     res = "  " + "\n  ".join(lines)
     return res

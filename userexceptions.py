@@ -1,7 +1,6 @@
-'''
+"""
 @author Mark Vismer
-
-'''
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -15,12 +14,12 @@ class UndefinedException(SyntaxError):
     particular line number.
     """
     def __init__(self, contents, lineno=None):
-        '''
+        """
         Constructor
-        '''
+        """
         self.msg = contents
         self.lineno = lineno
-
+    
     def __str__(self):
         if self.lineno is None:
             return self.msg

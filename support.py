@@ -1,7 +1,6 @@
-'''
+"""
 @author Mark Vismer
-
-'''
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,16 +27,16 @@ except:
 
 
 def clean(s):
-    ''' Remove white spaces from <s>. '''
+    """ Remove white spaces from <s>. """
     return s.strip(' \t\n\r\f\v')
 
 
 COMMENT_START_REGEX = re.compile(r'((///?)|(/\*\*?)|(\"))')
 
 def process_line_for_comments(line, inside_comment=False, inside_string=False):
-    '''
+    """
     Processes a line of a c file to extract a comment.
-    '''
+    """
     comment = ''
     code = ''
     while line:
@@ -65,7 +64,7 @@ def process_line_for_comments(line, inside_comment=False, inside_string=False):
                 break
             else:
                 inside_string = False
-                code += line[:idx] + "'''"
+                code += line[:idx] + '"""'
                 line = line[idx+1:]
         else:
             m = COMMENT_START_REGEX.search(line)
@@ -73,7 +72,7 @@ def process_line_for_comments(line, inside_comment=False, inside_string=False):
                 if m.group(1) == '"':
                     inside_string = True
                     end = m.end()
-                    code += "'''" + line[:(end-1)]
+                    code += '"""' + line[:(end-1)]
                     line = line[end:]
                 else:
                     code += line[:m.start()]
@@ -87,7 +86,7 @@ def process_line_for_comments(line, inside_comment=False, inside_string=False):
             else:
                 code += line
                 break
-
+    
     return code, comment, inside_comment, inside_string
 
 
